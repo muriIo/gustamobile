@@ -21,10 +21,10 @@ type SheetClient struct {
 	sheetName     string
 }
 
-var cellsMap = map[string]string{
-	"Tha":         "C",
-	"khovovo":     "D",
-	"TCastellani": "E",
+var cellsMap = map[string][]interface{}{
+	"Tha":         []any{nil, nil, true, nil, nil},
+	"khovovo":     []any{nil, nil, nil, true, nil},
+	"TCastellani": []any{nil, nil, nil, nil, true},
 }
 
 var months = map[time.Month]string{
@@ -73,8 +73,8 @@ func NewSheetClient(credentialsFile, spreadSheetId, sheetName string) (*SheetCli
 	}, nil
 }
 
-func (c *SheetClient) AppendRow(cell string, values []interface{}) error {
-	range_ := c.sheetName + "!" + cell
+func (c *SheetClient) AppendRow(values []interface{}) error {
+	range_ := fmt.Sprintf("%s!A1:F1", c.sheetName)
 
 	valueRange := &sheets.ValueRange{
 		Values: [][]interface{}{values},
@@ -90,14 +90,31 @@ func (c *SheetClient) AppendRow(cell string, values []interface{}) error {
 	return err
 }
 
+func (c *SheetClient) checkSpreadsheet() error {
+	resp, err := c.service.Spreadsheets.Get(c.spreadSheetId).Do()
+
+	if err != nil {
+		return fmt.Errorf("error accessing spreadsheet: %v", err)
+	}
+
+	fmt.Printf("Spreasheet found: %s\n", resp.Properties.Title)
+	fmt.Printf("   Available Sheets:\n")
+
+	for _, sheet := range resp.Sheets {
+		fmt.Printf("       - %s (ID: %d)\n", sheet.Properties.Title, sheet.Properties.SheetId)
+	}
+
+	return nil
+}
+
 func PresenceHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	log.Println(m.Author.GlobalName)
 	log.Println(m.Content)
 
-	cell := cellsMap[m.Author.GlobalName]
+	values := cellsMap[m.Author.GlobalName]
 
-	if cell != "" {
-		err := currentSheet.AppendRow(cell, []any{true})
+	if values != nil {
+		err := currentSheet.AppendRow(values)
 
 		if err != nil {
 			log.Println(fmt.Errorf("error while appending new row, %v", err))
@@ -108,7 +125,7 @@ func PresenceHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 }
 
 func main() {
-	err := godotenv.Load()
+	err := godotenv.Load("./config/.env")
 
 	if err != nil {
 		log.Fatal("Error loading .env file")
@@ -122,6 +139,12 @@ func main() {
 
 	if err != nil {
 		log.Fatal("Error creating the Sheet client")
+	}
+
+	err = currentSheet.checkSpreadsheet()
+
+	if err != nil {
+		log.Fatalf("Error veryfing spreadsheet: %s", err)
 	}
 
 	bot := fmt.Sprintf("Bot %s", os.Getenv("BOT_TOKEN"))
